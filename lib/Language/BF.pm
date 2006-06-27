@@ -2,7 +2,7 @@ package Language::BF;
 use 5.008001;
 use strict;
 use warnings;
-our $VERSION = sprintf "%d.%02d", q$Revision: 0.1 $ =~ /(\d+)/g;
+our $VERSION = sprintf "%d.%02d", q$Revision: 0.2 $ =~ /(\d+)/g;
 
 sub new($;$$) {
     my $class = shift;
@@ -29,6 +29,7 @@ sub code($$) {
     $bf->reset;
     $bf;
 }
+*parse = \&code;
 
 sub compile($){
     my $bf  = shift;
@@ -44,7 +45,7 @@ EOS
             '+' => '$data[$sp]++;',
             '-' => '$data[$sp]--;',
             '.' => 'push @out, $data[$sp];',
-            ',' => '$data[$sp] = pop @_;',
+            ',' => '$data[$sp] = shift @_;',
             '[' => 'while($data[$sp]){',
             ']' => '}',
           }->{$op}
@@ -97,7 +98,7 @@ sub step($){
         '+' => sub { $bf->{data}[ $bf->{sp} ]++ },
         '-' => sub { $bf->{data}[ $bf->{sp} ]-- },
         '.' => sub { push @{ $bf->{out} }, $bf->{data}[ $bf->{sp} ] },
-        ',' => sub { $bf->{data}[ $bf->{sp} ] = pop @{ $bf->{in} } },
+        ',' => sub { $bf->{data}[ $bf->{sp} ] = shift @{ $bf->{in} } },
         '[' => sub {
             return if $bf->{data}[ $bf->{sp} ];
             my $nest = 1;
@@ -127,6 +128,34 @@ sub step($){
     }->{$op}();
     $bf->{pc}++;
 }
+
+sub as_c($;$){
+    my $bf  = shift;
+    my $datasize = shift || 65536;
+    my $src = <<"EOS";
+int main(int argc, char **argv){ 
+char data[$datasize];
+int  sp = 0;
+EOS
+    for my $op ( @{ $bf->{code} } ) {
+        $src .= {
+            '<' => 'sp--;',
+            '>' => 'sp++;',
+            '+' => 'data[sp]++;',
+            '-' => 'data[sp]--;',
+            '.' => 'putchar(data[sp]);',
+            ',' => 'data[sp] = getchar();',
+            '[' => 'while(data[sp]){',
+            ']' => '}',
+          }->{$op}
+          . "\n";
+    }
+    $src .= <<'EOS';
+}
+EOS
+    return $src;
+}
+
 
 1;
 __END__
@@ -167,6 +196,8 @@ Resets the virtual machien to its initial state
 
 =item code($code)
 
+=item parse($code)
+
 $econstruct the virtual machine.  does. C<< $bf->reset >>
 
 =item input
@@ -189,6 +220,10 @@ Retrieves the stdout of the virtual machine.
 =item as_perl
 
 Returns the perl-compiled source code that implements the virtual machine.
+
+=item as_c
+
+Returns the c source.
 
 =back
 
