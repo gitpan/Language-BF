@@ -2,13 +2,23 @@ package Language::BF;
 use 5.008001;
 use strict;
 use warnings;
-our $VERSION = sprintf "%d.%02d", q$Revision: 0.2 $ =~ /(\d+)/g;
+our $VERSION = sprintf "%d.%02d", q$Revision: 0.3 $ =~ /(\d+)/g;
 
 sub new($;$$) {
     my $class = shift;
     my $bf = bless {}, $class;
     $bf->code(shift)  if @_;
     $bf->input(shift) if @_;
+    $bf;
+}
+
+sub new_from_file {
+    my $bf    = shift->new();
+    my $bfile = shift or die __PACKAGE__, "->new_from_file(filename)";
+    open my $fh, "<", $bfile or die "$bfile:$!";
+    my $src = do { local $/; <$fh> };
+    close $fh;
+    $bf->code($src);
     $bf;
 }
 
@@ -81,10 +91,15 @@ sub output($){
     join '', map {chr} @{$bf->{out}};
 }
 
-sub as_perl($){
+sub as_source($) {
     my $bf = shift;
     require B::Deparse;
-    return B::Deparse->new()->coderef2text($bf->{coderef});
+    B::Deparse->new()->coderef2text( $bf->{coderef} );
+}
+
+sub as_perl($) {
+    'print map{chr} sub'. $_[0]->as_source
+	. '->(split//, do{local $/;my $s=<>})' . "\n";
 }
 
 sub step($){
@@ -164,7 +179,7 @@ __END__
 
 =head1 NAME
 
-Language::BF - BF virtual macine in perl
+Language::BF - BF virtual machine in perl
 
 =head1 SYNOPSIS
 
@@ -190,9 +205,13 @@ Language::BF is a OOP module that offers following methods
 
 Constructs the BF virtual machine.
 
+=item new($filename)
+
+Constructs the BF virtual machine from BF source file.
+
 =item reset
 
-Resets the virtual machien to its initial state
+Resets the virtual machine to its initial state
 
 =item code($code)
 
@@ -217,9 +236,21 @@ Step-executes the virtual machine.
 
 Retrieves the stdout of the virtual machine.
 
-=item as_perl
+=item as_source
 
 Returns the perl-compiled source code that implements the virtual machine.
+
+=item as_perl
+
+Returns the executable perl code; the difference between this and
+C<as_source> is that this one adds interface to STDIN/STDOUT so it can
+be directly fed back to perl.
+
+  perl -MLanguage::BF \
+       -e 'print Language::BF->new_from_file(shift)->as_perl' source.bf\
+       | perl
+
+is equivalent to running source.bf.
 
 =item as_c
 
